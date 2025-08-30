@@ -1,23 +1,35 @@
 #!/bin/bash
 set -e
 
-echo ">>> WARNING: This will completely wipe /dev/sda1 and /dev/sda2 and reinstall Arch Linux."
+echo ">>> WARNING: This will reinstall Arch Linux on /dev/sda2 and reinstall bootloader on /dev/sda1."
+echo ">>> Existing data on root (/) will be replaced, but since partitions are mounted, they will NOT be reformatted."
 read -p "Type 'YES' to continue: " confirm
 if [ "$confirm" != "YES" ]; then
   echo "Aborted."
   exit 1
 fi
 
-echo ">>> Formatting partitions..."
-mkfs.ext4 -F /dev/sda2
-mkfs.fat -F32 /dev/sda1
+# Check mounts
+if mount | grep -q "/dev/sda2 "; then
+  echo ">>> /dev/sda2 is mounted (current root). Skipping format."
+else
+  echo ">>> Formatting /dev/sda2..."
+  mkfs.ext4 -F /dev/sda2
+fi
 
-echo ">>> Mounting partitions..."
-mount /dev/sda2 /mnt
+if mount | grep -q "/dev/sda1 "; then
+  echo ">>> /dev/sda1 is mounted (boot). Skipping format."
+else
+  echo ">>> Formatting /dev/sda1..."
+  mkfs.fat -F32 /dev/sda1
+fi
+
+echo ">>> Mounting target system..."
+mount /dev/sda2 /mnt || true
 mkdir -p /mnt/boot
-mount /dev/sda1 /mnt/boot
+mount /dev/sda1 /mnt/boot || true
 
-echo ">>> Bootstrapping Arch system..."
+echo ">>> Bootstrapping fresh Arch install..."
 pacstrap -K /mnt base linux linux-firmware nano vim git grub efibootmgr
 
 echo ">>> Generating fstab..."
@@ -52,6 +64,6 @@ EOF
 "
 
 echo ">>> Unmounting..."
-umount -R /mnt
+umount -R /mnt || true
 
 echo ">>> Done! Reboot into your fresh Arch system."
