@@ -1,0 +1,57 @@
+#!/bin/bash
+set -e
+
+echo ">>> WARNING: This will completely wipe /dev/sda1 and /dev/sda2 and reinstall Arch Linux."
+read -p "Type 'YES' to continue: " confirm
+if [ "$confirm" != "YES" ]; then
+  echo "Aborted."
+  exit 1
+fi
+
+echo ">>> Formatting partitions..."
+mkfs.ext4 -F /dev/sda2
+mkfs.fat -F32 /dev/sda1
+
+echo ">>> Mounting partitions..."
+mount /dev/sda2 /mnt
+mkdir -p /mnt/boot
+mount /dev/sda1 /mnt/boot
+
+echo ">>> Bootstrapping Arch system..."
+pacstrap -K /mnt base linux linux-firmware nano vim git grub efibootmgr
+
+echo ">>> Generating fstab..."
+genfstab -U /mnt >> /mnt/etc/fstab
+
+echo ">>> Entering chroot to configure system..."
+arch-chroot /mnt /bin/bash -c "
+  set -e
+  echo '>>> Setting timezone...'
+  ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+  hwclock --systohc
+
+  echo '>>> Configuring locales...'
+  sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+  locale-gen
+  echo 'LANG=en_US.UTF-8' > /etc/locale.conf
+
+  echo '>>> Setting hostname...'
+  echo 'archlinux' > /etc/hostname
+  cat > /etc/hosts <<EOF
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   archlinux.localdomain archlinux
+EOF
+
+  echo '>>> Installing GRUB bootloader...'
+  grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=Arch
+  grub-mkconfig -o /boot/grub/grub.cfg
+
+  echo '>>> Set root password now:'
+  passwd
+"
+
+echo ">>> Unmounting..."
+umount -R /mnt
+
+echo ">>> Done! Reboot into your fresh Arch system."
